@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理・スクリーン投影 | Live Screen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    .danmaku-item {
+      position: absolute;
+      white-space: nowrap;
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: #ffffff;
+      text-shadow: 2px 2px 0px #000, -2px 2px 0px #000, 2px -2px 0px #000, -2px -2px 0px #000;
+      will-change: transform;
+      animation: danmaku 8s linear forwards;
+    }
+    @keyframes danmaku {
+      from { transform: translateX(100vw); }
+      to { transform: translateX(-100%); }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between relative select-none">
+
+  <!-- 1. 管理操作ヘッダー -->
+  <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700 p-4 z-50 shadow-lg">
+    <div class="max-w-6xl mx-auto flex flex-wrap gap-4 items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-xs uppercase font-bold text-slate-400">STATUS:</span>
+        <span id="current-status-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+          取得中...
+        </span>
+      </div>
+
+      <div class="flex-1 max-w-xl flex gap-2">
+        <input type="text" id="question-input" placeholder="投映する質問文を入力..." 
+          class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+        <button id="btn-active" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+          質問を表示する
+        </button>
+        <button id="btn-waiting" type="button" class="bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+          待機中にする
+        </button>
+      </div>
+
+      <div>
+        <button id="btn-toggle-view" type="button" class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow">
+          <span>📝 記録一覧を見る</span>
+          <span id="header-comment-count" class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. 投影スクリーンエリア -->
+  <main id="view-screen" class="flex-1 flex items-center justify-center p-8 relative">
+    <div id="display-area" class="text-center z-10 max-w-4xl mx-auto pointer-events-none">
+    </div>
+
+    <div id="danmaku-container" class="absolute inset-0 pointer-events-none overflow-hidden z-20"></div>
+  </main>
+
+  <!-- 3. 質問ごとのコメント記録一覧画面 -->
+  <main id="view-logs" class="flex-1 hidden p-6 max-w-5xl mx-auto w-full z-30 flex flex-col">
+    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl flex-1 flex flex-col">
+      
+      <div class="flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-slate-800">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            📝 質問ごとのコメント記録
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">対象の質問を選択して回答を絞り込めます</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select id="select-question-filter" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 max-w-xs">
+          </select>
+
+          <button id="btn-download-csv" type="button" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1 shadow whitespace-nowrap">
+            📥 この質問のCSV出力
+          </button>
+        </div>
+      </div>
+
+      <div id="log-list" class="flex-1 overflow-y-auto max-h-[60vh] grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
+        <p class="text-slate-500 text-center py-12 text-sm col-span-full">まだコメントはありません。</p>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://qeazxtwhygvwjdnfrbqc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MzMzODQsImV4cCI6MjEwMTUwOTM4NH0.w33yFeFNluFhMxUy2vJgk3Hb8wJB61mGl-mCG4Uuvps';
+    
+    const supabaseClient = window.supabase.createClient 
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const statusBadge = document.getElementById('current-status-badge');
+    const displayArea = document.getElementById('display-area');
+    const questionInput = document.getElementById('question-input');
+    const danmakuContainer = document.getElementById('danmaku-container');
+    const btnActive = document.getElementById('btn-active');
+    const btnWaiting = document.getElementById('btn-waiting');
+    
+    const viewScreen = document.getElementById('view-screen');
+    const viewLogs = document.getElementById('view-logs');
+    const btnToggleView = document.getElementById('btn-toggle-view');
+    const headerCommentCount = document.getElementById('header-comment-count');
+    const logList = document.getElementById('log-list');
+    const btnDownloadCsv = document.getElementById('btn-download-csv');
+    const selectQuestionFilter = document.getElementById('select-question-filter');
+
+    let allComments = [];
+    let isShowingLogs = false;
+    let currentActiveQuestion = '';
+
+    const TOTAL_LANES = 6;
+    let lastUsedLaneIndex = -1;
+
+    function renderScreen(status, question) {
+      currentActiveQuestion = question || '';
+      if (status === 'active') {
+        statusBadge.textContent = '質問投映中';
+        statusBadge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        displayArea.innerHTML = `
+          <div class="inline-block bg-indigo-500/10 text-indigo-400 font-bold px-4 py-1.5 rounded-full text-sm mb-6 border border-indigo-500/20">
+            Q. CURRENT QUESTION
+          </div>
+          <h1 class="text-4xl md:text-6xl font-extrabold text-white leading-tight tracking-wide drop-shadow-md">
+            ${question || '（質問文が設定されていません）'}
+          </h1>
+        `;
+      } else {
+        statusBadge.textContent = '待機中';
+        statusBadge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-slate-700 text-slate-300 border border-slate-600';
+        displayArea.innerHTML = `
+          <h1 class="text-3xl md:text-5xl font-bold text-slate-400 tracking-wider">
+            〜 まもなく開始いたします 〜
+          </h1>
+          <p class="text-slate-500 mt-4 text-base">スマートフォンで手元の画面をご覧ください</p>
+        `;
+      }
+    }
+
+    btnActive.addEventListener('click', () => updateState('active'));
+    btnWaiting.addEventListener('click', () => updateState('waiting'));
+    btnToggleView.addEventListener('click', toggleViewMode);
+    btnDownloadCsv.addEventListener('click', downloadCSV);
+    selectQuestionFilter.addEventListener('change', renderLogs);
+
+    function toggleViewMode() {
+      isShowingLogs = !isShowingLogs;
+
+      if (isShowingLogs) {
+        viewScreen.classList.add('hidden');
+        viewLogs.classList.remove('hidden');
+        btnToggleView.innerHTML = `<span>📺 投映画面に戻る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
+        btnToggleView.className = 'bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
+        updateFilterOptions();
+      } else {
+        viewLogs.classList.add('hidden');
+        viewScreen.classList.remove('hidden');
+        btnToggleView.innerHTML = `<span>📝 記録一覧を見る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
+        btnToggleView.className = 'bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
+      }
+    }
+
+    async function updateState(newStatus) {
+      const qText = questionInput.value.trim();
+      renderScreen(newStatus, qText);
+
+      const { error } = await supabaseClient.from('app_state').update({ status: newStatus, question: qText }).eq('id', 1);
+      if (error) console.error('DB更新エラー:', error);
+    }
+
+    function handleNewComment(commentObj, isLive = true) {
+      if (!allComments.some(c => c.id === commentObj.id)) {
+        allComments.unshift(commentObj);
+        updateFilterOptions();
+        renderLogs();
+
+        if (isLive) {
+          spawnDanmaku(commentObj.text);
+        }
+      }
+    }
+
+    function spawnDanmaku(text) {
+      const el = document.createElement('div');
+      el.className = 'danmaku-item';
+      el.textContent = text;
+
+      lastUsedLaneIndex = (lastUsedLaneIndex + 1) % TOTAL_LANES;
+      
+      const startPercent = 15;
+      const endPercent = 80;
+      const step = (endPercent - startPercent) / (TOTAL_LANES - 1);
+      const laneTop = startPercent + (step * lastUsedLaneIndex);
+
+      const randomOffset = (Math.random() * 4) - 2;
+      el.style.top = `${laneTop + randomOffset}%`;
+
+      danmakuContainer.appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+    }
+
+    function updateFilterOptions() {
+      const questions = Array.from(new Set(allComments.map(c => c.question_text || '（未分類/過去の質問）')));
+      const selectedVal = selectQuestionFilter.value || currentActiveQuestion || questions[0] || '';
+
+      selectQuestionFilter.innerHTML = questions.map(q => 
+        `<option value="${escapeHtml(q)}" ${q === selectedVal ? 'selected' : ''}>Q: ${escapeHtml(q)}</option>`
+      ).join('');
+
+      if (questions.length === 0) {
+        selectQuestionFilter.innerHTML = '<option value="">質問データなし</option>';
+      }
+    }
+
+    function renderLogs() {
+      headerCommentCount.textContent = allComments.length;
+      const targetQuestion = selectQuestionFilter.value;
+      const filtered = allComments.filter(c => (c.question_text || '（未分類/過去の質問）') === targetQuestion);
+
+      if (filtered.length === 0) {
+        logList.innerHTML = '<p class="text-slate-500 text-center py-12 text-sm col-span-full">この質問に対するコメントはまだありません。</p>';
+        return;
+      }
+
+      logList.innerHTML = filtered.map((c, index) => {
+        const timeStr = c.created_at ? new Date(c.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '直前';
+        const isLatest = index === 0 ? 'border-indigo-500/50 bg-indigo-950/40' : 'border-slate-800 bg-slate-900/60';
+
+        return `
+          <div class="border ${isLatest} p-4 rounded-xl flex justify-between items-start gap-3 shadow-sm">
+            <span class="text-slate-100 text-base font-semibold leading-snug break-all">${escapeHtml(c.text)}</span>
+            <span class="text-[10px] text-slate-400 font-mono bg-slate-800 px-2 py-0.5 rounded whitespace-nowrap">${timeStr}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function downloadCSV() {
+      const targetQuestion = selectQuestionFilter.value;
+      const filtered = allComments.filter(c => (c.question_text || '（未分類/過去の質問）') === targetQuestion);
+
+      if (filtered.length === 0) {
+        alert('出力できるコメントがありません。');
+        return;
+      }
+
+      let csvContent = `\uFEFF質問内容: "${targetQuestion.replace(/"/g, '""')}"\n`;
+      csvContent += '日時,コメント内容\n';
+
+      filtered.forEach(c => {
+        const time = c.created_at ? new Date(c.created_at).toLocaleString('ja-JP') : '';
+        const text = `"${(c.text || '').replace(/"/g, '""')}"`;
+        csvContent += `${time},${text}\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `記録_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    async function initApp() {
+      try {
+        const { data } = await supabaseClient.from('app_state').select('*').eq('id', 1).maybeSingle();
+        if (data) {
+          renderScreen(data.status, data.question);
+          if (data.question) questionInput.value = data.question;
+        } else {
+          renderScreen('waiting', '');
+        }
+
+        const { data: commentsData } = await supabaseClient.from('comments').select('*').order('created_at', { ascending: false });
+        if (commentsData) {
+          allComments = commentsData;
+          updateFilterOptions();
+          renderLogs();
+        }
+
+        supabaseClient.channel('admin_app_state')
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state' }, payload => {
+            renderScreen(payload.new.status, payload.new.question);
+          })
+          .subscribe();
+
+        supabaseClient.channel('admin_comments')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
+            handleNewComment(payload.new, true);
+          })
+          .subscribe();
+      } catch (e) {
+        console.error(e);
+        renderScreen('waiting', '');
+      }
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
