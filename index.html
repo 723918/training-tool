@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>イベント参加用 | Live App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col justify-between p-4 sm:p-6">
+
+  <main class="max-w-md mx-auto w-full my-auto">
+    <div id="status-card" class="bg-white rounded-2xl shadow-xl p-6 transition-all duration-300 border border-slate-100">
+      
+      <!-- 待機画面 -->
+      <div id="view-waiting" class="text-center py-8">
+        <div class="inline-block p-4 rounded-full bg-indigo-50 text-indigo-600 mb-4 animate-pulse">
+          <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold mb-2 text-slate-800">待機中</h2>
+        <p class="text-sm text-slate-500">画面が開くまでしばらくお待ちください...</p>
+      </div>
+
+      <!-- 質問・回答画面 -->
+      <div id="view-active" class="hidden">
+        <span class="inline-block bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-md mb-3">
+          受付中の質問
+        </span>
+        <h2 id="question-text" class="text-xl font-bold text-slate-900 mb-6 leading-relaxed">
+          <!-- 質問文 -->
+        </h2>
+
+        <form id="comment-form" onsubmit="sendComment(event)" class="space-y-3">
+          <input type="text" id="comment-input" placeholder="コメントを入力（スクリーンに流れます）" required
+            class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+          <button type="submit" id="send-btn" 
+            class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors shadow-md">
+            送信する
+          </button>
+        </form>
+        <p id="send-msg" class="text-xs text-center text-emerald-600 font-bold mt-2 hidden">送信しました！</p>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 py-4">
+    Live Interactive System
+  </footer>
+
+  <script>
+    const SUPABASE_URL = 'https://qeazxtwhygvwjdnfrbqc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MzMzODQsImV4cCI6MjEwMTUwOTM4NH0.w33yFeFNluFhMxUy2vJgk3Hb8wJB61mGl-mCG4Uuvps';
+    
+    const supabaseClient = window.supabase.createClient 
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const viewWaiting = document.getElementById('view-waiting');
+    const viewActive = document.getElementById('view-active');
+    const questionTextElement = document.getElementById('question-text');
+    const commentInput = document.getElementById('comment-input');
+    const sendMsg = document.getElementById('send-msg');
+
+    let currentQuestionText = '';
+
+    function renderUserView(status, question) {
+      currentQuestionText = question || '';
+      if (status === 'active') {
+        viewWaiting.classList.add('hidden');
+        viewActive.classList.remove('hidden');
+        questionTextElement.textContent = currentQuestionText || '（質問文がありません）';
+      } else {
+        viewActive.classList.add('hidden');
+        viewWaiting.classList.remove('hidden');
+      }
+    }
+
+    async function initUserApp() {
+      try {
+        const { data } = await supabaseClient.from('app_state').select('*').eq('id', 1).maybeSingle();
+        if (data) {
+          renderUserView(data.status, data.question);
+        }
+
+        supabaseClient.channel('user_app_state')
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state' }, payload => {
+            renderUserView(payload.new.status, payload.new.question);
+          })
+          .subscribe();
+      } catch(e) {
+        console.error(e);
+      }
+    }
+
+    async function sendComment(e) {
+      e.preventDefault();
+      const text = commentInput.value.trim();
+      if (!text) return;
+
+      let targetQ = currentQuestionText || questionTextElement.textContent.trim();
+      if (!targetQ || targetQ === '（質問文がありません）') {
+        const { data } = await supabaseClient.from('app_state').select('question').eq('id', 1).maybeSingle();
+        if (data && data.question) targetQ = data.question;
+      }
+
+      const { error } = await supabaseClient.from('comments').insert([{ 
+        text: text, 
+        question_text: targetQ || '無題の質問' 
+      }]);
+
+      if (error) {
+        console.error('送信エラー:', error);
+      } else {
+        commentInput.value = '';
+        sendMsg.classList.remove('hidden');
+        setTimeout(() => sendMsg.classList.add('hidden'), 2000);
+      }
+    }
+
+    initUserApp();
+  </script>
+</body>
+</html>
