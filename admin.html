@@ -48,7 +48,7 @@
 
       <div>
         <button id="btn-toggle-view" type="button" class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow">
-          <span>📝 記録一覧を見る</span>
+          <span>📝 記録・アンケート管理</span>
           <span id="header-comment-count" class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">0</span>
         </button>
       </div>
@@ -64,12 +64,10 @@
     <div id="poll-active-view" class="hidden z-10 w-full max-w-2xl bg-slate-950/90 border border-cyan-500/50 rounded-2xl p-6 shadow-2xl backdrop-blur">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
         <div class="flex items-center gap-2">
-          <span class="px-2.5 py-1 bg-cyan-500/20 text-cyan-300 font-bold text-xs rounded-full border border-cyan-500/30">📊 リアルタイムアンケート</span>
-          <h3 id="active-poll-title" class="font-bold text-yellow-300 text-lg"></h3>
+          <span class="px-2.5 py-1 bg-cyan-500/20 text-cyan-300 font-bold text-xs rounded-full border border-cyan-500/30">📊 アンケート集計中</span>
+          <span id="poll-vis-badge" class="px-2.5 py-1 font-bold text-xs rounded-full"></span>
         </div>
-        <button type="button" onclick="closeCurrentPoll()" class="px-3 py-1 bg-red-600/80 hover:bg-red-500 text-xs font-bold rounded-lg transition-colors">
-          アンケート終了
-        </button>
+        <h3 id="active-poll-title" class="font-bold text-yellow-300 text-lg"></h3>
       </div>
       <div id="poll-results-bars" class="space-y-4"></div>
       <div class="text-right text-xs text-slate-400 mt-4">総投票数: <span id="total-votes-count" class="font-bold text-cyan-400 text-sm">0</span> 票</div>
@@ -78,15 +76,17 @@
     <div id="danmaku-container" class="absolute inset-0 pointer-events-none overflow-hidden z-20"></div>
   </main>
 
-  <!-- 3. 質問ごとのコメント記録＆アンケート作成画面 -->
+  <!-- 3. 質問ごとのコメント記録＆アンケート管理画面 -->
   <main id="view-logs" class="flex-1 hidden p-6 max-w-5xl mx-auto w-full z-30 flex flex-col gap-6">
     
-    <!-- アンケート作成パネル -->
+    <!-- アンケート管理パネル -->
     <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl">
       <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-cyan-400">
-        <span>📊 アンケートを開始する</span>
+        <span>📊 アンケートの新規作成・事前ストック</span>
       </h2>
-      <div id="poll-create-form" class="space-y-3">
+      
+      <!-- 新規作成フォーム -->
+      <div class="space-y-3 mb-6 pb-6 border-b border-slate-800">
         <input type="text" id="poll-question-input" placeholder="質問を入力（例：今日の研修内容は分かりやすかったですか？）" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
           <input type="text" id="poll-opt-0" value="はい" placeholder="選択肢1" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
@@ -94,9 +94,15 @@
           <input type="text" id="poll-opt-2" placeholder="選択肢3（任意）" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
           <input type="text" id="poll-opt-3" placeholder="選択肢4（任意）" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
         </div>
-        <button type="button" onclick="startNewPoll()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 font-bold rounded-lg text-sm transition-all shadow-md">
-          🚀 アンケートを開始する
+        <button type="button" onclick="createPollStock()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 font-bold rounded-lg text-sm transition-all shadow-md">
+          ➕ アンケートを保存（作成）する
         </button>
+      </div>
+
+      <!-- 保存済みアンケート一覧（目隠し/公開コントロール） -->
+      <h3 class="text-sm font-bold text-slate-300 mb-3">📋 作成済みアンケート一覧（公開／伏せるの切り替え）</h3>
+      <div id="poll-stock-list" class="space-y-3 max-h-60 overflow-y-auto pr-1">
+        <p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>
       </div>
     </div>
 
@@ -120,7 +126,7 @@
         </div>
       </div>
 
-      <div id="log-list" class="flex-1 overflow-y-auto max-h-[50vh] grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
+      <div id="log-list" class="flex-1 overflow-y-auto max-h-[40vh] grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
         <p class="text-slate-500 text-center py-12 text-sm col-span-full">まだコメントはありません。</p>
       </div>
     </div>
@@ -152,7 +158,7 @@
     let allComments = [];
     let isShowingLogs = false;
     let currentActiveQuestion = '';
-    let currentPollId = null;
+    let currentPoll = null;
 
     const TOTAL_LANES = 6;
     let lastUsedLaneIndex = -1;
@@ -167,7 +173,7 @@
             Q. CURRENT QUESTION
           </div>
           <h1 class="text-4xl md:text-6xl font-extrabold text-white leading-tight tracking-wide drop-shadow-md">
-            ${question || '（質問文が設定されていません）'}
+            ${escapeHtml(question) || '（質問文が設定されていません）'}
           </h1>
         `;
       } else {
@@ -197,10 +203,11 @@
         btnToggleView.innerHTML = `<span>📺 投映画面に戻る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
         btnToggleView.className = 'bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
         updateFilterOptions();
+        loadPollStocks();
       } else {
         viewLogs.classList.add('hidden');
         viewScreen.classList.remove('hidden');
-        btnToggleView.innerHTML = `<span>📝 記録一覧を見る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
+        btnToggleView.innerHTML = `<span>📝 記録・アンケート管理</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
         btnToggleView.className = 'bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
       }
     }
@@ -311,8 +318,10 @@
       return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    /* --- アンケート制御処理 --- */
-    async function startNewPoll() {
+    /* --- 📊 アンケート高度管理機能 --- */
+    
+    // 1. アンケートを新規ストック作成
+    async function createPollStock() {
       const question = document.getElementById('poll-question-input').value.trim();
       if (!question) return alert('質問文を入力してください');
 
@@ -323,46 +332,132 @@
       }
       if (options.length < 2) return alert('選択肢は最低2つ入力してください');
 
-      await supabaseClient.from('polls').update({ is_active: false }).eq('is_active', true);
-
-      const { data, error } = await supabaseClient.from('polls').insert([{
+      const { error } = await supabaseClient.from('polls').insert([{
         question: question,
         options: options,
-        is_active: true
-      }]).select();
+        is_active: false,
+        is_published: false
+      }]);
 
       if (error) {
-        alert('アンケート開始エラー: Supabaseでテーブルが作成されているか確認してください');
+        alert('作成エラー');
         console.error(error);
       } else {
-        currentPollId = data[0].id;
-        showPollDashboard(data[0]);
+        document.getElementById('poll-question-input').value = '';
+        loadPollStocks();
       }
     }
 
+    // 2. 作成済みアンケートの読み込み
+    async function loadPollStocks() {
+      const { data } = await supabaseClient.from('polls').select('*').order('id', { ascending: false });
+      const container = document.getElementById('poll-stock-list');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>';
+        return;
+      }
+
+      container.innerHTML = data.map(p => {
+        const optsStr = Array.isArray(p.options) ? p.options.join(' / ') : JSON.parse(p.options || '[]').join(' / ');
+        const isActive = p.is_active;
+        const isPub = p.is_published;
+
+        return `
+          <div class="bg-slate-900 border ${isActive ? 'border-cyan-500' : 'border-slate-800'} p-3 rounded-xl flex flex-wrap justify-between items-center gap-3">
+            <div class="flex-1 min-w-[200px]">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="font-bold text-sm text-yellow-300">Q. ${escapeHtml(p.question)}</span>
+                ${isActive ? '<span class="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-bold border border-cyan-500/30">実施中</span>' : ''}
+              </div>
+              <p class="text-xs text-slate-400">選択肢: ${escapeHtml(optsStr)}</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              ${!isActive ? `
+                <button type="button" onclick="startPoll(${p.id})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-colors">
+                  🚀 開始する
+                </button>
+              ` : `
+                <button type="button" onclick="togglePublish(${p.id}, ${!isPub})" class="px-3 py-1.5 ${isPub ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white font-bold text-xs rounded-lg transition-colors">
+                  ${isPub ? '🙈 伏せる（非公開）' : '👁️ 回答画面へ公開'}
+                </button>
+                <button type="button" onclick="stopPoll(${p.id})" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-lg transition-colors">
+                  🛑 終了
+                </button>
+              `}
+              <button type="button" onclick="deletePoll(${p.id})" class="px-2 py-1.5 text-slate-500 hover:text-red-400 text-xs">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 3. アンケートの開始
+    async function startPoll(id) {
+      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('is_active', true);
+      await supabaseClient.from('polls').update({ is_active: true, is_published: true }).eq('id', id);
+      loadPollStocks();
+      checkActivePoll();
+    }
+
+    // 4. 公開 / 伏せる の切り替え
+    async function togglePublish(id, targetState) {
+      await supabaseClient.from('polls').update({ is_published: targetState }).eq('id', id);
+      loadPollStocks();
+      checkActivePoll();
+    }
+
+    // 5. アンケートの終了
+    async function stopPoll(id) {
+      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('id', id);
+      loadPollStocks();
+      checkActivePoll();
+    }
+
+    // 6. アンケートの削除
+    async function deletePoll(id) {
+      if (!confirm('このアンケートを削除しますか？')) return;
+      await supabaseClient.from('polls').delete().eq('id', id);
+      loadPollStocks();
+      checkActivePoll();
+    }
+
+    // 7. 現在のアクティブアンケートの監視＆描画
     async function checkActivePoll() {
       const { data } = await supabaseClient.from('polls').select('*').eq('is_active', true).order('id', { ascending: false }).limit(1);
+      
       if (data && data.length > 0) {
-        currentPollId = data[0].id;
-        showPollDashboard(data[0]);
+        currentPoll = data[0];
+        document.getElementById('poll-active-view').classList.remove('hidden');
+        document.getElementById('active-poll-title').textContent = currentPoll.question;
+        
+        const badge = document.getElementById('poll-vis-badge');
+        if (currentPoll.is_published) {
+          badge.textContent = '👁️ 公開中';
+          badge.className = 'px-2.5 py-1 bg-emerald-500/20 text-emerald-300 font-bold text-xs rounded-full border border-emerald-500/30';
+        } else {
+          badge.textContent = '🙈 伏せ中（非公開）';
+          badge.className = 'px-2.5 py-1 bg-amber-500/20 text-amber-300 font-bold text-xs rounded-full border border-amber-500/30';
+        }
+
+        fetchAndRenderResults(currentPoll);
       } else {
-        currentPollId = null;
+        currentPoll = null;
         document.getElementById('poll-active-view').classList.add('hidden');
       }
     }
 
-    async function showPollDashboard(poll) {
-      document.getElementById('poll-active-view').classList.remove('hidden');
-      document.getElementById('active-poll-title').textContent = poll.question;
-      fetchAndRenderResults(poll);
-    }
-
+    // 8. 投票結果の棒グラフ集計描画
     async function fetchAndRenderResults(poll) {
       const { data: votes } = await supabaseClient.from('poll_votes').select('option_index').eq('poll_id', poll.id);
       const total = votes ? votes.length : 0;
       document.getElementById('total-votes-count').textContent = total;
 
-      const counts = new Array(poll.options.length).fill(0);
+      const opts = Array.isArray(poll.options) ? poll.options : JSON.parse(poll.options || '[]');
+      const counts = new Array(opts.length).fill(0);
+      
       if (votes) {
         votes.forEach(v => {
           if (counts[v.option_index] !== undefined) counts[v.option_index]++;
@@ -372,7 +467,7 @@
       const container = document.getElementById('poll-results-bars');
       container.innerHTML = '';
 
-      poll.options.forEach((opt, idx) => {
+      opts.forEach((opt, idx) => {
         const count = counts[idx];
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         
@@ -389,14 +484,6 @@
         `;
         container.insertAdjacentHTML('beforeend', barHtml);
       });
-    }
-
-    async function closeCurrentPoll() {
-      if (currentPollId) {
-        await supabaseClient.from('polls').update({ is_active: false }).eq('id', currentPollId);
-        currentPollId = null;
-        document.getElementById('poll-active-view').classList.add('hidden');
-      }
     }
 
     async function initApp() {
@@ -433,11 +520,7 @@
         supabaseClient.channel('admin_polls')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, () => checkActivePoll())
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poll_votes' }, () => {
-            if (currentPollId) {
-              supabaseClient.from('polls').select('*').eq('id', currentPollId).single().then(({ data }) => {
-                if (data) fetchAndRenderResults(data);
-              });
-            }
+            if (currentPoll) fetchAndRenderResults(currentPoll);
           })
           .subscribe();
 
