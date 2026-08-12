@@ -11,7 +11,7 @@
 
   <main class="max-w-md mx-auto w-full my-auto space-y-4">
 
-    <!-- 📊 リアルタイムアンケート回答カード（開催時のみ表示） -->
+    <!-- 📊 リアルタイムアンケート回答カード（公開時のみ表示） -->
     <div id="participant-poll-box" class="hidden bg-slate-900 rounded-2xl shadow-xl p-6 text-white border border-cyan-500/50">
       <div class="flex items-center gap-2 text-cyan-400 font-bold text-xs mb-2">
         <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
@@ -78,7 +78,6 @@
     const sendMsg = document.getElementById('send-msg');
 
     let currentQuestionText = '';
-    let activePollId = null;
 
     function renderUserView(status, question) {
       currentQuestionText = question || '';
@@ -117,16 +116,18 @@
       }
     }
 
-    /* --- アンケート処理（参加者用） --- */
+    /* --- アンケート処理（参加者用：公開中のみ表示） --- */
     async function checkParticipantPoll() {
-      const { data } = await supabaseClient.from('polls').select('*').eq('is_active', true).order('id', { ascending: false }).limit(1);
+      const { data } = await supabaseClient.from('polls')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_published', true)
+        .order('id', { ascending: false })
+        .limit(1);
       
       if (data && data.length > 0) {
-        const poll = data[0];
-        activePollId = poll.id;
-        renderPollForParticipant(poll);
+        renderPollForParticipant(data[0]);
       } else {
-        activePollId = null;
         document.getElementById('participant-poll-box').classList.add('hidden');
       }
     }
@@ -147,7 +148,9 @@
         msgEl.classList.add('hidden');
       }
 
-      poll.options.forEach((opt, idx) => {
+      const opts = Array.isArray(poll.options) ? poll.options : JSON.parse(poll.options || '[]');
+
+      opts.forEach((opt, idx) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `w-full py-3 px-4 rounded-xl font-bold text-sm text-left border transition-all ${
