@@ -29,7 +29,10 @@
   <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700 p-4 z-50 shadow-lg">
     <div class="max-w-6xl mx-auto flex flex-wrap gap-4 items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="text-xs uppercase font-bold text-slate-400">STATUS:</span>
+        <span class="text-xs uppercase font-bold text-slate-400">ROOM:</span>
+        <span id="current-room-badge" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
+          default
+        </span>
         <span id="current-status-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
           取得中...
         </span>
@@ -99,7 +102,7 @@
         </button>
       </div>
 
-      <!-- 保存済みアンケート一覧（目隠し/公開コントロール） -->
+      <!-- 保存済みアンケート一覧 -->
       <h3 class="text-sm font-bold text-slate-300 mb-3">📋 作成済みアンケート一覧（公開／伏せるの切り替え）</h3>
       <div id="poll-stock-list" class="space-y-3 max-h-60 overflow-y-auto pr-1">
         <p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>
@@ -139,6 +142,12 @@
     const supabaseClient = window.supabase.createClient 
       ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
       : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // URLパラメータからルームIDを取得（指定がなければ 'default'）
+    const urlParams = new URLSearchParams(window.location.search);
+    const ROOM_ID = urlParams.get('room') || 'default';
+
+    document.getElementById('current-room-badge').textContent = ROOM_ID;
 
     const statusBadge = document.getElementById('current-status-badge');
     const displayArea = document.getElementById('display-area');
@@ -216,11 +225,16 @@
       const qText = questionInput.value.trim();
       renderScreen(newStatus, qText);
 
-      const { error } = await supabaseClient.from('app_state').update({ status: newStatus, question: qText }).eq('id', 1);
-      if (error) console.error('DB更新エラー:', error);
+      const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', ROOM_ID).maybeSingle();
+      if (data) {
+        await supabaseClient.from('app_state').update({ status: newStatus, question: qText }).eq('id', data.id);
+      } else {
+        await supabaseClient.from('app_state').insert([{ room_id: ROOM_ID, status: newStatus, question: qText }]);
+      }
     }
 
     function handleNewComment(commentObj, isLive = true) {
+      if (commentObj.room_id !== ROOM_ID) return;
       if (!allComments.some(c => c.id === commentObj.id)) {
         allComments.unshift(commentObj);
         updateFilterOptions();
@@ -309,7 +323,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `記録_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `記録_${ROOM_ID}_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -320,7 +334,6 @@
 
     /* --- 📊 アンケート高度管理機能 --- */
     
-    // 1. アンケートを新規ストック作成
     async function createPollStock() {
       const question = document.getElementById('poll-question-input').value.trim();
       if (!question) return alert('質問文を入力してください');
@@ -333,6 +346,7 @@
       if (options.length < 2) return alert('選択肢は最低2つ入力してください');
 
       const { error } = await supabaseClient.from('polls').insert([{
+        room_id: ROOM_ID,
         question: question,
         options: options,
         is_active: false,
@@ -348,9 +362,8 @@
       }
     }
 
-    // 2. 作成済みアンケートの読み込み
     async function loadPollStocks() {
-      const { data } = await supabaseClient.from('polls').select('*').order('id', { ascending: false });
+      const { data } = await supabaseClient.from('polls').select('*').eq('room_id', ROOM_ID).order('id', { ascending: false });
       const container = document.getElementById('poll-stock-list');
       if (!data || data.length === 0) {
         container.innerHTML = '<p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>';
@@ -394,29 +407,25 @@
       }).join('');
     }
 
-    // 3. アンケートの開始
     async function startPoll(id) {
-      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('is_active', true);
+      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', ROOM_ID).eq('is_active', true);
       await supabaseClient.from('polls').update({ is_active: true, is_published: true }).eq('id', id);
       loadPollStocks();
       checkActivePoll();
     }
 
-    // 4. 公開 / 伏せる の切り替え
     async function togglePublish(id, targetState) {
       await supabaseClient.from('polls').update({ is_published: targetState }).eq('id', id);
       loadPollStocks();
       checkActivePoll();
     }
 
-    // 5. アンケートの終了
     async function stopPoll(id) {
       await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('id', id);
       loadPollStocks();
       checkActivePoll();
     }
 
-    // 6. アンケートの削除
     async function deletePoll(id) {
       if (!confirm('このアンケートを削除しますか？')) return;
       await supabaseClient.from('polls').delete().eq('id', id);
@@ -424,9 +433,8 @@
       checkActivePoll();
     }
 
-    // 7. 現在のアクティブアンケートの監視＆描画
     async function checkActivePoll() {
-      const { data } = await supabaseClient.from('polls').select('*').eq('is_active', true).order('id', { ascending: false }).limit(1);
+      const { data } = await supabaseClient.from('polls').select('*').eq('room_id', ROOM_ID).eq('is_active', true).order('id', { ascending: false }).limit(1);
       
       if (data && data.length > 0) {
         currentPoll = data[0];
@@ -449,7 +457,6 @@
       }
     }
 
-    // 8. 投票結果の棒グラフ集計描画
     async function fetchAndRenderResults(poll) {
       const { data: votes } = await supabaseClient.from('poll_votes').select('option_index').eq('poll_id', poll.id);
       const total = votes ? votes.length : 0;
@@ -488,7 +495,7 @@
 
     async function initApp() {
       try {
-        const { data } = await supabaseClient.from('app_state').select('*').eq('id', 1).maybeSingle();
+        const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', ROOM_ID).maybeSingle();
         if (data) {
           renderScreen(data.status, data.question);
           if (data.question) questionInput.value = data.question;
@@ -496,7 +503,7 @@
           renderScreen('waiting', '');
         }
 
-        const { data: commentsData } = await supabaseClient.from('comments').select('*').order('created_at', { ascending: false });
+        const { data: commentsData } = await supabaseClient.from('comments').select('*').eq('room_id', ROOM_ID).order('created_at', { ascending: false });
         if (commentsData) {
           allComments = commentsData;
           updateFilterOptions();
@@ -506,8 +513,10 @@
         checkActivePoll();
 
         supabaseClient.channel('admin_app_state')
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state' }, payload => {
-            renderScreen(payload.new.status, payload.new.question);
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
+            if (payload.new && payload.new.room_id === ROOM_ID) {
+              renderScreen(payload.new.status, payload.new.question);
+            }
           })
           .subscribe();
 
