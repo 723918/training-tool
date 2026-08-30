@@ -11,7 +11,7 @@
 
   <main class="max-w-md mx-auto w-full my-auto space-y-4">
 
-    <!-- 📊 リアルタイムアンケート回答カード（公開時のみ表示） -->
+    <!-- 📊 リアルタイムアンケート回答カード -->
     <div id="participant-poll-box" class="hidden bg-slate-900 rounded-2xl shadow-xl p-6 text-white border border-cyan-500/50">
       <div class="flex items-center gap-2 text-cyan-400 font-bold text-xs mb-2">
         <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
@@ -25,7 +25,6 @@
     <!-- 通常の質問・コメントカード -->
     <div id="status-card" class="bg-white rounded-2xl shadow-xl p-6 transition-all duration-300 border border-slate-100">
       
-      <!-- 待機画面 -->
       <div id="view-waiting" class="text-center py-8">
         <div class="inline-block p-4 rounded-full bg-indigo-50 text-indigo-600 mb-4 animate-pulse">
           <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,13 +35,11 @@
         <p class="text-sm text-slate-500">画面が開くまでしばらくお待ちください...</p>
       </div>
 
-      <!-- 質問・回答画面 -->
       <div id="view-active" class="hidden">
         <span class="inline-block bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-md mb-3">
           受付中の質問
         </span>
         <h2 id="question-text" class="text-xl font-bold text-slate-900 mb-6 leading-relaxed">
-          <!-- 質問文 -->
         </h2>
 
         <form id="comment-form" onsubmit="sendComment(event)" class="space-y-3">
@@ -64,16 +61,17 @@
   </footer>
 
   <script>
+    /* 研修用 (training-tool) 接続情報 */
     const SUPABASE_URL = 'https://qeazxtwhygvwjdnfrbqc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MzMzODQsImV4cCI6MjEwMTUwOTM4NH0.w33yFeFNluFhMxUy2vJgk3Hb8wJB61mGl-mCG4Uuvps';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NDYwNTQsImV4cCI6MjE0MTMyMjA1NH0.l_78pUpB538jCsnqXN0w2iS3sW4y3_0HJV7x9G_3U70';
+
+    // URLからルームIDを取得 (?room=〇〇)
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentRoom = urlParams.get('room') || 'default';
     
     const supabaseClient = window.supabase.createClient 
       ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
       : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // URLパラメータからルームIDを取得（指定がなければ 'default'）
-    const urlParams = new URLSearchParams(window.location.search);
-    const ROOM_ID = urlParams.get('room') || 'default';
 
     const viewWaiting = document.getElementById('view-waiting');
     const viewActive = document.getElementById('view-active');
@@ -102,12 +100,15 @@
 
       let targetQ = currentQuestionText || questionTextElement.textContent.trim();
       if (!targetQ || targetQ === '（質問文がありません）') {
-        const { data } = await supabaseClient.from('app_state').select('question').eq('room_id', ROOM_ID).maybeSingle();
+        const { data } = await supabaseClient.from('app_state')
+          .select('question')
+          .eq('room_id', currentRoom)
+          .maybeSingle();
         if (data && data.question) targetQ = data.question;
       }
 
       const { error } = await supabaseClient.from('comments').insert([{ 
-        room_id: ROOM_ID,
+        room_id: currentRoom,
         text: text, 
         question_text: targetQ || '無題の質問' 
       }]);
@@ -121,11 +122,11 @@
       }
     }
 
-    /* --- アンケート処理（参加者用：公開中のみ表示） --- */
+    /* --- アンケート処理 --- */
     async function checkParticipantPoll() {
       const { data } = await supabaseClient.from('polls')
         .select('*')
-        .eq('room_id', ROOM_ID)
+        .eq('room_id', currentRoom)
         .eq('is_active', true)
         .eq('is_published', true)
         .order('id', { ascending: false })
@@ -190,7 +191,11 @@
 
     async function initUserApp() {
       try {
-        const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', ROOM_ID).maybeSingle();
+        const { data } = await supabaseClient.from('app_state')
+          .select('*')
+          .eq('room_id', currentRoom)
+          .maybeSingle();
+
         if (data) {
           renderUserView(data.status, data.question);
         }
@@ -199,7 +204,7 @@
 
         supabaseClient.channel('user_app_state')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
-            if (payload.new && payload.new.room_id === ROOM_ID) {
+            if (payload.new && payload.new.room_id === currentRoom) {
               renderUserView(payload.new.status, payload.new.question);
             }
           })
