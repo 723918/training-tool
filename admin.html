@@ -29,10 +29,7 @@
   <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700 p-4 z-50 shadow-lg">
     <div class="max-w-6xl mx-auto flex flex-wrap gap-4 items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="text-xs uppercase font-bold text-slate-400">ROOM:</span>
-        <span id="current-room-badge" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
-          default
-        </span>
+        <span id="room-badge" class="bg-slate-700 text-slate-300 text-xs px-2.5 py-1 rounded-md font-mono font-bold">ROOM: default</span>
         <span id="current-status-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
           取得中...
         </span>
@@ -88,9 +85,8 @@
         <span>📊 アンケートの新規作成・事前ストック</span>
       </h2>
       
-      <!-- 新規作成フォーム -->
       <div class="space-y-3 mb-6 pb-6 border-b border-slate-800">
-        <input type="text" id="poll-question-input" placeholder="質問を入力（例：今日の研修内容は分かりやすかったですか？）" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
+        <input type="text" id="poll-question-input" placeholder="質問を入力（例：今日の授業内容は分かりやすかったですか？）" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
           <input type="text" id="poll-opt-0" value="はい" placeholder="選択肢1" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
           <input type="text" id="poll-opt-1" value="いいえ" placeholder="選択肢2" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
@@ -102,7 +98,6 @@
         </button>
       </div>
 
-      <!-- 保存済みアンケート一覧 -->
       <h3 class="text-sm font-bold text-slate-300 mb-3">📋 作成済みアンケート一覧（公開／伏せるの切り替え）</h3>
       <div id="poll-stock-list" class="space-y-3 max-h-60 overflow-y-auto pr-1">
         <p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>
@@ -136,18 +131,18 @@
   </main>
 
   <script>
+    /* 研修用 (training-tool) 接続情報 */
     const SUPABASE_URL = 'https://qeazxtwhygvwjdnfrbqc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MzMzODQsImV4cCI6MjEwMTUwOTM4NH0.w33yFeFNluFhMxUy2vJgk3Hb8wJB61mGl-mCG4Uuvps';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NDYwNTQsImV4cCI6MjEwMTMyMjA1NH0.l_78pUpB538jCsnqXN0w2iS3sW4y3_0HJV7x9G_3U70';
     
+    // URLからルームIDを取得 (?room=〇〇)
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentRoom = urlParams.get('room') || 'default';
+    document.getElementById('room-badge').textContent = `ROOM: ${currentRoom}`;
+
     const supabaseClient = window.supabase.createClient 
       ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
       : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // URLパラメータからルームIDを取得（指定がなければ 'default'）
-    const urlParams = new URLSearchParams(window.location.search);
-    const ROOM_ID = urlParams.get('room') || 'default';
-
-    document.getElementById('current-room-badge').textContent = ROOM_ID;
 
     const statusBadge = document.getElementById('current-status-badge');
     const displayArea = document.getElementById('display-area');
@@ -225,16 +220,17 @@
       const qText = questionInput.value.trim();
       renderScreen(newStatus, qText);
 
-      const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', ROOM_ID).maybeSingle();
-      if (data) {
-        await supabaseClient.from('app_state').update({ status: newStatus, question: qText }).eq('id', data.id);
-      } else {
-        await supabaseClient.from('app_state').insert([{ room_id: ROOM_ID, status: newStatus, question: qText }]);
-      }
+      const { error } = await supabaseClient.from('app_state').upsert({ 
+        room_id: currentRoom, 
+        status: newStatus, 
+        question: qText 
+      });
+      if (error) console.error('更新エラー:', error);
     }
 
     function handleNewComment(commentObj, isLive = true) {
-      if (commentObj.room_id !== ROOM_ID) return;
+      if ((commentObj.room_id || 'default') !== currentRoom) return;
+
       if (!allComments.some(c => c.id === commentObj.id)) {
         allComments.unshift(commentObj);
         updateFilterOptions();
@@ -323,7 +319,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `記録_${ROOM_ID}_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `記録_${currentRoom}_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -332,8 +328,7 @@
       return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    /* --- 📊 アンケート高度管理機能 --- */
-    
+    /* --- アンケート機能 --- */
     async function createPollStock() {
       const question = document.getElementById('poll-question-input').value.trim();
       if (!question) return alert('質問文を入力してください');
@@ -346,7 +341,7 @@
       if (options.length < 2) return alert('選択肢は最低2つ入力してください');
 
       const { error } = await supabaseClient.from('polls').insert([{
-        room_id: ROOM_ID,
+        room_id: currentRoom,
         question: question,
         options: options,
         is_active: false,
@@ -363,7 +358,11 @@
     }
 
     async function loadPollStocks() {
-      const { data } = await supabaseClient.from('polls').select('*').eq('room_id', ROOM_ID).order('id', { ascending: false });
+      const { data } = await supabaseClient.from('polls')
+        .select('*')
+        .eq('room_id', currentRoom)
+        .order('id', { ascending: false });
+
       const container = document.getElementById('poll-stock-list');
       if (!data || data.length === 0) {
         container.innerHTML = '<p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>';
@@ -408,7 +407,7 @@
     }
 
     async function startPoll(id) {
-      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', ROOM_ID).eq('is_active', true);
+      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', currentRoom);
       await supabaseClient.from('polls').update({ is_active: true, is_published: true }).eq('id', id);
       loadPollStocks();
       checkActivePoll();
@@ -421,7 +420,7 @@
     }
 
     async function stopPoll(id) {
-      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('id', id);
+      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', currentRoom);
       loadPollStocks();
       checkActivePoll();
     }
@@ -434,7 +433,12 @@
     }
 
     async function checkActivePoll() {
-      const { data } = await supabaseClient.from('polls').select('*').eq('room_id', ROOM_ID).eq('is_active', true).order('id', { ascending: false }).limit(1);
+      const { data } = await supabaseClient.from('polls')
+        .select('*')
+        .eq('room_id', currentRoom)
+        .eq('is_active', true)
+        .order('id', { ascending: false })
+        .limit(1);
       
       if (data && data.length > 0) {
         currentPoll = data[0];
@@ -495,7 +499,7 @@
 
     async function initApp() {
       try {
-        const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', ROOM_ID).maybeSingle();
+        const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', currentRoom).maybeSingle();
         if (data) {
           renderScreen(data.status, data.question);
           if (data.question) questionInput.value = data.question;
@@ -503,7 +507,11 @@
           renderScreen('waiting', '');
         }
 
-        const { data: commentsData } = await supabaseClient.from('comments').select('*').eq('room_id', ROOM_ID).order('created_at', { ascending: false });
+        const { data: commentsData } = await supabaseClient.from('comments')
+          .select('*')
+          .eq('room_id', currentRoom)
+          .order('created_at', { ascending: false });
+
         if (commentsData) {
           allComments = commentsData;
           updateFilterOptions();
@@ -514,7 +522,7 @@
 
         supabaseClient.channel('admin_app_state')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
-            if (payload.new && payload.new.room_id === ROOM_ID) {
+            if (payload.new && payload.new.room_id === currentRoom) {
               renderScreen(payload.new.status, payload.new.question);
             }
           })
