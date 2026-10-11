@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理・スクリーン投影 | Live Screen</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     .danmaku-item {
       position: absolute;
@@ -25,13 +25,13 @@
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between relative select-none">
 
-  <!-- 1. 管理操作ヘッダー -->
+  <!-- ヘッダー -->
   <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700 p-4 z-50 shadow-lg">
     <div class="max-w-6xl mx-auto flex flex-wrap gap-4 items-center justify-between">
       <div class="flex items-center gap-3">
-        <span id="room-badge" class="bg-slate-700 text-slate-300 text-xs px-2.5 py-1 rounded-md font-mono font-bold">ROOM: default</span>
+        <span class="text-xs uppercase font-bold text-slate-400">STATUS:</span>
         <span id="current-status-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-          取得中...
+          同期中...
         </span>
       </div>
 
@@ -46,103 +46,59 @@
         </button>
       </div>
 
-      <div>
+      <div class="flex items-center gap-2">
+        <button id="btn-show-qr" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow">
+          <span>📱 参加用QR</span>
+        </button>
         <button id="btn-toggle-view" type="button" class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow">
-          <span>📝 記録・アンケート管理</span>
+          <span>📝 記録一覧を見る</span>
           <span id="header-comment-count" class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">0</span>
         </button>
       </div>
     </div>
   </header>
 
-  <!-- 2. 投影スクリーンエリア -->
-  <main id="view-screen" class="flex-1 flex flex-col items-center justify-center p-8 relative">
-    <div id="display-area" class="text-center z-10 max-w-4xl mx-auto pointer-events-none mb-6">
-    </div>
-
-    <!-- 📊 リアルタイムアンケート表示エリア（投影用） -->
-    <div id="poll-active-view" class="hidden z-10 w-full max-w-2xl bg-slate-950/90 border border-cyan-500/50 rounded-2xl p-6 shadow-2xl backdrop-blur">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
-        <div class="flex items-center gap-2">
-          <span class="px-2.5 py-1 bg-cyan-500/20 text-cyan-300 font-bold text-xs rounded-full border border-cyan-500/30">📊 アンケート集計中</span>
-          <span id="poll-vis-badge" class="px-2.5 py-1 font-bold text-xs rounded-full"></span>
-        </div>
-        <h3 id="active-poll-title" class="font-bold text-yellow-300 text-lg"></h3>
-      </div>
-      <div id="poll-results-bars" class="space-y-4"></div>
-      <div class="text-right text-xs text-slate-400 mt-4">総投票数: <span id="total-votes-count" class="font-bold text-cyan-400 text-sm">0</span> 票</div>
-    </div>
-
+  <!-- 投影エリア -->
+  <main id="view-screen" class="flex-1 flex items-center justify-center p-8 relative">
+    <div id="display-area" class="text-center z-10 max-w-4xl mx-auto pointer-events-none"></div>
     <div id="danmaku-container" class="absolute inset-0 pointer-events-none overflow-hidden z-20"></div>
   </main>
 
-  <!-- 3. 質問ごとのコメント記録＆アンケート管理画面 -->
-  <main id="view-logs" class="flex-1 hidden p-6 max-w-5xl mx-auto w-full z-30 flex flex-col gap-6">
-    
-    <!-- アンケート管理パネル -->
-    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-      <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-cyan-400">
-        <span>📊 アンケートの新規作成・事前ストック</span>
-      </h2>
-      
-      <div class="space-y-3 mb-6 pb-6 border-b border-slate-800">
-        <input type="text" id="poll-question-input" placeholder="質問を入力（例：今日の授業内容は分かりやすかったですか？）" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <input type="text" id="poll-opt-0" value="はい" placeholder="選択肢1" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-          <input type="text" id="poll-opt-1" value="いいえ" placeholder="選択肢2" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-          <input type="text" id="poll-opt-2" placeholder="選択肢3（任意）" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-          <input type="text" id="poll-opt-3" placeholder="選択肢4（任意）" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-        </div>
-        <button type="button" onclick="createPollStock()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 font-bold rounded-lg text-sm transition-all shadow-md">
-          ➕ アンケートを保存（作成）する
-        </button>
-      </div>
-
-      <h3 class="text-sm font-bold text-slate-300 mb-3">📋 作成済みアンケート一覧（公開／伏せるの切り替え）</h3>
-      <div id="poll-stock-list" class="space-y-3 max-h-60 overflow-y-auto pr-1">
-        <p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>
-      </div>
-    </div>
-
-    <!-- コメント記録一覧 -->
+  <!-- 記録一覧エリア -->
+  <main id="view-logs" class="flex-1 hidden p-6 max-w-5xl mx-auto w-full z-30 flex flex-col">
     <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl flex-1 flex flex-col">
       <div class="flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-slate-800">
         <div>
-          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
-            📝 質問ごとのコメント記録
-          </h2>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">📝 質問ごとのコメント記録</h2>
           <p class="text-xs text-slate-400 mt-1">対象の質問を選択して回答を絞り込めます</p>
         </div>
-
         <div class="flex items-center gap-2">
-          <select id="select-question-filter" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 max-w-xs">
-          </select>
-
+          <select id="select-question-filter" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 max-w-xs"></select>
           <button id="btn-download-csv" type="button" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1 shadow whitespace-nowrap">
             📥 この質問のCSV出力
           </button>
         </div>
       </div>
-
-      <div id="log-list" class="flex-1 overflow-y-auto max-h-[40vh] grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
+      <div id="log-list" class="flex-1 overflow-y-auto max-h-[60vh] grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
         <p class="text-slate-500 text-center py-12 text-sm col-span-full">まだコメントはありません。</p>
       </div>
     </div>
   </main>
 
-  <script>
-    /* 研修用 (training-tool) 接続情報 */
-    const SUPABASE_URL = 'https://qeazxtwhygvwjdnfrbqc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlYXp4dHdoeWd2d2pkbmZyYnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MzMzODQsImV4cCI6MjEwMTUwOTM4NH0.w33yFeFNluFhMxUy2vJgk3Hb8wJB61mGl-mCG4Uuvps';
-    
-    // URLからルームIDを取得 (?room=〇〇)
-    const urlParams = new URLSearchParams(window.location.search);
-    const currentRoom = urlParams.get('room') || 'default';
-    document.getElementById('room-badge').textContent = `ROOM: ${currentRoom}`;
+  <!-- QRコードモーダル -->
+  <div id="qr-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <h3 class="text-lg font-bold text-white">📱 参加用QRコード</h3>
+      <div class="bg-white p-4 rounded-xl inline-block mx-auto">
+        <div id="qrcode-container"></div>
+      </div>
+      <p id="participant-url-text" class="text-xs font-mono text-indigo-300 break-all bg-slate-950 p-2 rounded border border-slate-800"></p>
+      <button id="btn-close-qr" type="button" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl text-sm transition-colors border border-slate-700">閉じる</button>
+    </div>
+  </div>
 
-    const supabaseClient = window.supabase.createClient 
-      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-      : window.supabase.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  <script>
+    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzkgRXgoGDFvRDwC5toZefvsbKxRYfZV9EET6sosaj7yaDPGsJVgbIcVZbnQ8fAuA5_Yw/exec';
 
     const statusBadge = document.getElementById('current-status-badge');
     const displayArea = document.getElementById('display-area');
@@ -150,7 +106,6 @@
     const danmakuContainer = document.getElementById('danmaku-container');
     const btnActive = document.getElementById('btn-active');
     const btnWaiting = document.getElementById('btn-waiting');
-    
     const viewScreen = document.getElementById('view-screen');
     const viewLogs = document.getElementById('view-logs');
     const btnToggleView = document.getElementById('btn-toggle-view');
@@ -159,13 +114,32 @@
     const btnDownloadCsv = document.getElementById('btn-download-csv');
     const selectQuestionFilter = document.getElementById('select-question-filter');
 
+    const btnShowQr = document.getElementById('btn-show-qr');
+    const btnCloseQr = document.getElementById('btn-close-qr');
+    const qrModal = document.getElementById('qr-modal');
+    const qrcodeContainer = document.getElementById('qrcode-container');
+    const participantUrlText = document.getElementById('participant-url-text');
+
     let allComments = [];
+    let processedCommentIds = new Set();
     let isShowingLogs = false;
     let currentActiveQuestion = '';
-    let currentPoll = null;
+    let qrGenerated = false;
 
-    const TOTAL_LANES = 6;
-    let lastUsedLaneIndex = -1;
+    btnShowQr.addEventListener('click', () => {
+      const participantUrl = window.location.href.includes('admin.html') 
+        ? window.location.href.replace('admin.html', 'index.html') 
+        : 'https://realtime-tool.vercel.app/index.html';
+      
+      participantUrlText.textContent = participantUrl;
+      if (!qrGenerated) {
+        qrcodeContainer.innerHTML = '';
+        new QRCode(qrcodeContainer, { text: participantUrl, width: 200, height: 200 });
+        qrGenerated = true;
+      }
+      qrModal.classList.remove('hidden');
+    });
+    btnCloseQr.addEventListener('click', () => qrModal.classList.add('hidden'));
 
     function renderScreen(status, question) {
       currentActiveQuestion = question || '';
@@ -173,20 +147,14 @@
         statusBadge.textContent = '質問投映中';
         statusBadge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
         displayArea.innerHTML = `
-          <div class="inline-block bg-indigo-500/10 text-indigo-400 font-bold px-4 py-1.5 rounded-full text-sm mb-6 border border-indigo-500/20">
-            Q. CURRENT QUESTION
-          </div>
-          <h1 class="text-4xl md:text-6xl font-extrabold text-white leading-tight tracking-wide drop-shadow-md">
-            ${escapeHtml(question) || '（質問文が設定されていません）'}
-          </h1>
+          <div class="inline-block bg-indigo-500/10 text-indigo-400 font-bold px-4 py-1.5 rounded-full text-sm mb-6 border border-indigo-500/20">Q. CURRENT QUESTION</div>
+          <h1 class="text-4xl md:text-6xl font-extrabold text-white leading-tight tracking-wide drop-shadow-md">${escapeHtml(question) || '（質問文が設定されていません）'}</h1>
         `;
       } else {
         statusBadge.textContent = '待機中';
         statusBadge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-slate-700 text-slate-300 border border-slate-600';
         displayArea.innerHTML = `
-          <h1 class="text-3xl md:text-5xl font-bold text-slate-400 tracking-wider">
-            〜 まもなく開始いたします 〜
-          </h1>
+          <h1 class="text-3xl md:text-5xl font-bold text-slate-400 tracking-wider">〜 まもなく開始いたします 〜</h1>
           <p class="text-slate-500 mt-4 text-base">スマートフォンで手元の画面をご覧ください</p>
         `;
       }
@@ -200,18 +168,16 @@
 
     function toggleViewMode() {
       isShowingLogs = !isShowingLogs;
-
       if (isShowingLogs) {
         viewScreen.classList.add('hidden');
         viewLogs.classList.remove('hidden');
         btnToggleView.innerHTML = `<span>📺 投映画面に戻る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
         btnToggleView.className = 'bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
         updateFilterOptions();
-        loadPollStocks();
       } else {
         viewLogs.classList.add('hidden');
         viewScreen.classList.remove('hidden');
-        btnToggleView.innerHTML = `<span>📝 記録・アンケート管理</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
+        btnToggleView.innerHTML = `<span>📝 記録一覧を見る</span> <span class="bg-amber-800/60 text-amber-200 text-xs px-2 py-0.5 rounded-full">${allComments.length}</span>`;
         btnToggleView.className = 'bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow';
       }
     }
@@ -219,44 +185,22 @@
     async function updateState(newStatus) {
       const qText = questionInput.value.trim();
       renderScreen(newStatus, qText);
-
-      const { error } = await supabaseClient.from('app_state').upsert({ 
-        room_id: currentRoom, 
-        status: newStatus, 
-        question: qText 
-      });
-      if (error) console.error('更新エラー:', error);
-    }
-
-    function handleNewComment(commentObj, isLive = true) {
-      if ((commentObj.room_id || 'default') !== currentRoom) return;
-
-      if (!allComments.some(c => c.id === commentObj.id)) {
-        allComments.unshift(commentObj);
-        updateFilterOptions();
-        renderLogs();
-
-        if (isLive) {
-          spawnDanmaku(commentObj.text);
-        }
-      }
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'updateState', status: newStatus, question: qText })
+        });
+      } catch (e) { console.error('状態更新エラー:', e); }
     }
 
     function spawnDanmaku(text) {
       const el = document.createElement('div');
       el.className = 'danmaku-item';
       el.textContent = text;
-
-      lastUsedLaneIndex = (lastUsedLaneIndex + 1) % TOTAL_LANES;
-      
-      const startPercent = 15;
-      const endPercent = 80;
-      const step = (endPercent - startPercent) / (TOTAL_LANES - 1);
-      const laneTop = startPercent + (step * lastUsedLaneIndex);
-
-      const randomOffset = (Math.random() * 4) - 2;
-      el.style.top = `${laneTop + randomOffset}%`;
-
+      const safeLanes = [12, 16, 20, 24, 28, 72, 76, 80, 84, 88];
+      const randomIndex = Math.floor(Math.random() * safeLanes.length);
+      el.style.top = `${safeLanes[randomIndex] + ((Math.random() * 3) - 1.5)}%`;
       danmakuContainer.appendChild(el);
       el.addEventListener('animationend', () => el.remove());
     }
@@ -264,62 +208,37 @@
     function updateFilterOptions() {
       const questions = Array.from(new Set(allComments.map(c => c.question_text || '（未分類/過去の質問）')));
       const selectedVal = selectQuestionFilter.value || currentActiveQuestion || questions[0] || '';
-
-      selectQuestionFilter.innerHTML = questions.map(q => 
-        `<option value="${escapeHtml(q)}" ${q === selectedVal ? 'selected' : ''}>Q: ${escapeHtml(q)}</option>`
-      ).join('');
-
-      if (questions.length === 0) {
-        selectQuestionFilter.innerHTML = '<option value="">質問データなし</option>';
-      }
+      selectQuestionFilter.innerHTML = questions.map(q => `<option value="${escapeHtml(q)}" ${q === selectedVal ? 'selected' : ''}>Q: ${escapeHtml(q)}</option>`).join('');
+      if (questions.length === 0) selectQuestionFilter.innerHTML = '<option value="">質問データなし</option>';
     }
 
     function renderLogs() {
       headerCommentCount.textContent = allComments.length;
       const targetQuestion = selectQuestionFilter.value;
       const filtered = allComments.filter(c => (c.question_text || '（未分類/過去の質問）') === targetQuestion);
-
       if (filtered.length === 0) {
         logList.innerHTML = '<p class="text-slate-500 text-center py-12 text-sm col-span-full">この質問に対するコメントはまだありません。</p>';
         return;
       }
-
-      logList.innerHTML = filtered.map((c, index) => {
-        const timeStr = c.created_at ? new Date(c.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '直前';
-        const isLatest = index === 0 ? 'border-indigo-500/50 bg-indigo-950/40' : 'border-slate-800 bg-slate-900/60';
-
-        return `
-          <div class="border ${isLatest} p-4 rounded-xl flex justify-between items-start gap-3 shadow-sm">
-            <span class="text-slate-100 text-base font-semibold leading-snug break-all">${escapeHtml(c.text)}</span>
-            <span class="text-[10px] text-slate-400 font-mono bg-slate-800 px-2 py-0.5 rounded whitespace-nowrap">${timeStr}</span>
-          </div>
-        `;
-      }).join('');
+      logList.innerHTML = filtered.map((c, index) => `
+        <div class="border ${index === 0 ? 'border-indigo-500/50 bg-indigo-950/40' : 'border-slate-800 bg-slate-900/60'} p-4 rounded-xl flex justify-between items-start gap-3 shadow-sm">
+          <span class="text-slate-100 text-base font-semibold leading-snug break-all">${escapeHtml(c.text)}</span>
+          <span class="text-[10px] text-slate-400 font-mono bg-slate-800 px-2 py-0.5 rounded whitespace-nowrap">${c.created_at || '直前'}</span>
+        </div>
+      `).join('');
     }
 
     function downloadCSV() {
       const targetQuestion = selectQuestionFilter.value;
       const filtered = allComments.filter(c => (c.question_text || '（未分類/過去の質問）') === targetQuestion);
-
-      if (filtered.length === 0) {
-        alert('出力できるコメントがありません。');
-        return;
-      }
-
-      let csvContent = `\uFEFF質問内容: "${targetQuestion.replace(/"/g, '""')}"\n`;
-      csvContent += '日時,コメント内容\n';
-
-      filtered.forEach(c => {
-        const time = c.created_at ? new Date(c.created_at).toLocaleString('ja-JP') : '';
-        const text = `"${(c.text || '').replace(/"/g, '""')}"`;
-        csvContent += `${time},${text}\n`;
-      });
-
+      if (filtered.length === 0) return alert('出力できるコメントがありません。');
+      let csvContent = `\uFEFF質問内容: "${targetQuestion.replace(/"/g, '""')}"\n日時,コメント内容\n`;
+      filtered.forEach(c => { csvContent += `${c.created_at || ''},"${(c.text || '').replace(/"/g, '""')}"\n`; });
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `記録_${currentRoom}_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `記録_${targetQuestion.slice(0,10)}_${new Date().toISOString().slice(0,10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -328,226 +247,31 @@
       return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    /* --- アンケート機能 --- */
-    async function createPollStock() {
-      const question = document.getElementById('poll-question-input').value.trim();
-      if (!question) return alert('質問文を入力してください');
-
-      const options = [];
-      for (let i = 0; i < 4; i++) {
-        const val = document.getElementById(`poll-opt-${i}`).value.trim();
-        if (val) options.push(val);
-      }
-      if (options.length < 2) return alert('選択肢は最低2つ入力してください');
-
-      const { error } = await supabaseClient.from('polls').insert([{
-        room_id: currentRoom,
-        question: question,
-        options: options,
-        is_active: false,
-        is_published: false
-      }]);
-
-      if (error) {
-        alert('作成エラー');
-        console.error(error);
-      } else {
-        document.getElementById('poll-question-input').value = '';
-        loadPollStocks();
-      }
-    }
-
-    async function loadPollStocks() {
-      const { data } = await supabaseClient.from('polls')
-        .select('*')
-        .eq('room_id', currentRoom)
-        .order('id', { ascending: false });
-
-      const container = document.getElementById('poll-stock-list');
-      if (!data || data.length === 0) {
-        container.innerHTML = '<p class="text-xs text-slate-500 py-2">作成済みのアンケートはありません。</p>';
-        return;
-      }
-
-      container.innerHTML = data.map(p => {
-        const optsStr = Array.isArray(p.options) ? p.options.join(' / ') : JSON.parse(p.options || '[]').join(' / ');
-        const isActive = p.is_active;
-        const isPub = p.is_published;
-
-        return `
-          <div class="bg-slate-900 border ${isActive ? 'border-cyan-500' : 'border-slate-800'} p-3 rounded-xl flex flex-wrap justify-between items-center gap-3">
-            <div class="flex-1 min-w-[200px]">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-bold text-sm text-yellow-300">Q. ${escapeHtml(p.question)}</span>
-                ${isActive ? '<span class="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-bold border border-cyan-500/30">実施中</span>' : ''}
-              </div>
-              <p class="text-xs text-slate-400">選択肢: ${escapeHtml(optsStr)}</p>
-            </div>
-
-            <div class="flex items-center gap-2">
-              ${!isActive ? `
-                <button type="button" onclick="startPoll(${p.id})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-colors">
-                  🚀 開始する
-                </button>
-              ` : `
-                <button type="button" onclick="togglePublish(${p.id}, ${!isPub})" class="px-3 py-1.5 ${isPub ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white font-bold text-xs rounded-lg transition-colors">
-                  ${isPub ? '🙈 伏せる（非公開）' : '👁️ 回答画面へ公開'}
-                </button>
-                <button type="button" onclick="stopPoll(${p.id})" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-lg transition-colors">
-                  🛑 終了
-                </button>
-              `}
-              <button type="button" onclick="deletePoll(${p.id})" class="px-2 py-1.5 text-slate-500 hover:text-red-400 text-xs">
-                🗑️
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    async function startPoll(id) {
-      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', currentRoom);
-      await supabaseClient.from('polls').update({ is_active: true, is_published: true }).eq('id', id);
-      loadPollStocks();
-      checkActivePoll();
-    }
-
-    async function togglePublish(id, targetState) {
-      await supabaseClient.from('polls').update({ is_published: targetState }).eq('id', id);
-      loadPollStocks();
-      checkActivePoll();
-    }
-
-    async function stopPoll(id) {
-      await supabaseClient.from('polls').update({ is_active: false, is_published: false }).eq('room_id', currentRoom);
-      loadPollStocks();
-      checkActivePoll();
-    }
-
-    async function deletePoll(id) {
-      if (!confirm('このアンケートを削除しますか？')) return;
-      await supabaseClient.from('polls').delete().eq('id', id);
-      loadPollStocks();
-      checkActivePoll();
-    }
-
-    async function checkActivePoll() {
-      const { data } = await supabaseClient.from('polls')
-        .select('*')
-        .eq('room_id', currentRoom)
-        .eq('is_active', true)
-        .order('id', { ascending: false })
-        .limit(1);
-      
-      if (data && data.length > 0) {
-        currentPoll = data[0];
-        document.getElementById('poll-active-view').classList.remove('hidden');
-        document.getElementById('active-poll-title').textContent = currentPoll.question;
-        
-        const badge = document.getElementById('poll-vis-badge');
-        if (currentPoll.is_published) {
-          badge.textContent = '👁️ 公開中';
-          badge.className = 'px-2.5 py-1 bg-emerald-500/20 text-emerald-300 font-bold text-xs rounded-full border border-emerald-500/30';
-        } else {
-          badge.textContent = '🙈 伏せ中（非公開）';
-          badge.className = 'px-2.5 py-1 bg-amber-500/20 text-amber-300 font-bold text-xs rounded-full border border-amber-500/30';
-        }
-
-        fetchAndRenderResults(currentPoll);
-      } else {
-        currentPoll = null;
-        document.getElementById('poll-active-view').classList.add('hidden');
-      }
-    }
-
-    async function fetchAndRenderResults(poll) {
-      const { data: votes } = await supabaseClient.from('poll_votes').select('option_index').eq('poll_id', poll.id);
-      const total = votes ? votes.length : 0;
-      document.getElementById('total-votes-count').textContent = total;
-
-      const opts = Array.isArray(poll.options) ? poll.options : JSON.parse(poll.options || '[]');
-      const counts = new Array(opts.length).fill(0);
-      
-      if (votes) {
-        votes.forEach(v => {
-          if (counts[v.option_index] !== undefined) counts[v.option_index]++;
-        });
-      }
-
-      const container = document.getElementById('poll-results-bars');
-      container.innerHTML = '';
-
-      opts.forEach((opt, idx) => {
-        const count = counts[idx];
-        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-        
-        const barHtml = `
-          <div>
-            <div class="flex justify-between text-xs font-semibold mb-1">
-              <span>${escapeHtml(opt)}</span>
-              <span class="text-cyan-300 font-mono">${count}票 (${pct}%)</span>
-            </div>
-            <div class="w-full bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700">
-              <div class="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-500 rounded-full" style="width: ${pct}%"></div>
-            </div>
-          </div>
-        `;
-        container.insertAdjacentHTML('beforeend', barHtml);
-      });
-    }
-
-    async function initApp() {
+    async function pollData() {
       try {
-        const { data } = await supabaseClient.from('app_state').select('*').eq('room_id', currentRoom).maybeSingle();
-        if (data) {
-          renderScreen(data.status, data.question);
-          if (data.question) questionInput.value = data.question;
-        } else {
-          renderScreen('waiting', '');
-        }
+        const stateRes = await fetch(`${GAS_WEB_APP_URL}?action=getState`);
+        const stateData = await stateRes.json();
+        if (stateData) renderScreen(stateData.status, stateData.question);
 
-        const { data: commentsData } = await supabaseClient.from('comments')
-          .select('*')
-          .eq('room_id', currentRoom)
-          .order('created_at', { ascending: false });
-
-        if (commentsData) {
+        const commentsRes = await fetch(`${GAS_WEB_APP_URL}?action=getComments`);
+        const commentsData = await commentsRes.json();
+        if (Array.isArray(commentsData)) {
           allComments = commentsData;
           updateFilterOptions();
           renderLogs();
-        }
 
-        checkActivePoll();
-
-        supabaseClient.channel('admin_app_state')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
-            if (payload.new && payload.new.room_id === currentRoom) {
-              renderScreen(payload.new.status, payload.new.question);
+          commentsData.slice().reverse().forEach(c => {
+            if (!processedCommentIds.has(c.id)) {
+              processedCommentIds.add(c.id);
+              if (processedCommentIds.size > 1) spawnDanmaku(c.text);
             }
-          })
-          .subscribe();
-
-        supabaseClient.channel('admin_comments')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
-            handleNewComment(payload.new, true);
-          })
-          .subscribe();
-
-        supabaseClient.channel('admin_polls')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, () => checkActivePoll())
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poll_votes' }, () => {
-            if (currentPoll) fetchAndRenderResults(currentPoll);
-          })
-          .subscribe();
-
-      } catch (e) {
-        console.error(e);
-        renderScreen('waiting', '');
-      }
+          });
+        }
+      } catch (e) { console.error('Poll Error:', e); }
     }
 
-    initApp();
+    pollData();
+    setInterval(pollData, 2000);
   </script>
 </body>
 </html>
